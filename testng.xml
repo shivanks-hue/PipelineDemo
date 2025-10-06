@@ -3,6 +3,7 @@
     <test name="Demo Test">
         <classes>
             <class name="DemoTest"/>
+            <class name="DemoAutomation"/>
         </classes>
     </test>
 </suite>
