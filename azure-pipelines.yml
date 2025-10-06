@@ -132,11 +132,11 @@ steps:
   displayName: 'Maven Clean & Compile'
 
 # Step 6: Run Selenium tests (headless mode recommended)
-# - script: mvn test
-#   displayName: 'Run Selenium Tests'
-# Step 6: Run Selenium tests (explicit test class)
-- script: mvn -Dtest=DemoTest test
+- script: mvn test
   displayName: 'Run Selenium Tests'
+# # Step 6: Run Selenium tests (explicit test class)
+# - script: mvn -Dtest=DemoTest test
+#   displayName: 'Run Selenium Tests'
 
 
 # Step 7: Package project (optional)
