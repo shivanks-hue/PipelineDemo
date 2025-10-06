@@ -1,18 +1,18 @@
+# Trigger pipeline on main branch
 trigger:
-- task: CmdLine@2
-  inputs:
-    script: |
-      echo Write your commands here
-      
-      echo Hello world
-  - main
+- main
 
+# Use self-hosted Windows agent
 pool:
-  name: Default   # Your self-hosted Windows agent pool name
+  name: Default
 
+# Variables
 variables:
   MAVEN_OPTS: "-Xmx1024m"
+  LT_USERNAME: $(LT_USERNAME)      # Must be set in pipeline/variable group
+  LT_ACCESS_KEY: $(LT_ACCESS_KEY)
 
+# Steps
 steps:
 # Step 0: Checkout repository
 - checkout: self
@@ -29,7 +29,7 @@ steps:
     }
   displayName: 'Ensure Chocolatey is Installed'
 
-# Step 2: Install JDK 21
+# Step 2: Install JDK 21 manually
 - powershell: |
     $jdkVersion = "21"
     $arch = "x64"
@@ -57,6 +57,7 @@ steps:
     path: '$(USERPROFILE)\.m2\repository'
     restoreKeys: |
       maven | "$(Agent.OS)"
+  displayName: 'Cache Maven Dependencies'
 
 # Step 4: Install Chrome & ChromeDriver
 - powershell: |
@@ -64,14 +65,14 @@ steps:
     $chromePath = "${Env:ProgramFiles}\Google\Chrome\Application\chrome.exe"
     if (-Not (Test-Path $chromePath)) { $chromePath = "${Env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe" }
     if (-Not (Test-Path $chromePath)) { Write-Error "Google Chrome not found!"; exit 1 }
-    
+
     # Get Chrome version
     try { $chromeVersion = (Get-ItemProperty "HKLM:\SOFTWARE\Google\Chrome\BLBeacon").version } catch {}
     if (-not $chromeVersion) {
         try { $chromeVersion = (Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Google\Chrome\BLBeacon").version } catch {}
     }
     if (-not $chromeVersion) { $chromeVersion = (& $chromePath --version).Split(' ')[2] }
-    
+
     $chromeMajorVersion = $chromeVersion.Split('.')[0]
     $chromedriverVersion = Invoke-RestMethod -Uri "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$chromeMajorVersion"
     $chromedriverZip = "chromedriver_win32.zip"
@@ -82,43 +83,14 @@ steps:
     & "$(Agent.ToolsDirectory)\chromedriver\chromedriver.exe" --version
   displayName: 'Install Chrome & ChromeDriver'
 
-# Step 5: LambdaTest Configuration Setup
-- task: LambdaTestSetup@1
-  inputs:
-    authMode: 'Basic'
-    username: '$(LT_USERNAME)'
-    accessKey: '$(LT_ACCESS_KEY)'
-    serviceConnection: 'LambdaTestConnection'
-  displayName: 'LambdaTest Configuration Setup'
-
-# Optional Step: Start LambdaTest Tunnel (for localhost testing)
-- task: LambdaTestTunnel@1
-  inputs:
-    action: 'Start'
-    serviceConnection: 'LambdaTestConnection'
-  displayName: 'Start LambdaTest Tunnel'
-
-# Step 6: Build Maven project
+# Step 5: Build Maven project
 - script: mvn clean compile
   displayName: 'Maven Clean & Compile'
 
-# Step 7: Run Selenium Tests (Java)
+# Step 6: Run Selenium Tests via Maven
 - script: mvn test
-  displayName: 'Run Selenium Tests on LambdaTest'
+  displayName: 'Run Selenium Tests'
 
-# Step 8: Publish LambdaTest Results
-- task: LambdaTestResults@1
-  inputs:
-    serviceConnection: 'LambdaTestConnection'
-  displayName: 'Publish LambdaTest Results'
-
-# Optional Step: Stop LambdaTest Tunnel
-- task: LambdaTestTunnel@1
-  inputs:
-    action: 'Stop'
-    serviceConnection: 'LambdaTestConnection'
-  displayName: 'Stop LambdaTest Tunnel'
-
-# Step 9: Package project (optional)
+# Step 7: Package project
 - script: mvn package
   displayName: 'Maven Package'
