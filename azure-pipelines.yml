@@ -6,58 +6,19 @@ variables:
   MAVEN_OPTS: "-Xmx1024m"
 steps:
 - checkout: self
-
-# Step 1: Ensure Chocolatey is installed
+# Step 1: Install JDK 21 using Chocolatey (or skip if already installed)
 - powershell: |
-    # Check if Chocolatey is installed
-    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-        Write-Host "Chocolatey is not installed. Installing Chocolatey..."
-        Set-ExecutionPolicy Bypass -Scope Process -Force; 
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; 
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-    } else {
-        Write-Host "Chocolatey is already installed."
-    }
-  displayName: 'Ensure Chocolatey is Installed'
-
-# Step 2: Download and install JDK 21 manually from Adoptium
-- powershell: |
-    $jdkVersion = "21"
-    $arch = "x64"
-    $os = "windows"
-    $impl = "hotspot"
-    $releaseType = "ga"
-    $downloadUrl = "https://api.adoptium.net/v3/binary/latest/$jdkVersion/$releaseType/$os/$arch/jdk/$impl/normal/eclipse"
-
-    Write-Host "Downloading JDK $jdkVersion from $downloadUrl"
-    Invoke-WebRequest -Uri $downloadUrl -OutFile "jdk.zip"
-
-    $jdkDir = "$(Agent.ToolsDirectory)\jdk-$jdkVersion"
-    Expand-Archive -Path "jdk.zip" -DestinationPath $jdkDir -Force
-    Remove-Item "jdk.zip"
-
-    # Get extracted JDK root (since Adoptium zips have versioned folder inside)
-    $jdkHome = Get-ChildItem $jdkDir | Where-Object { $_.PSIsContainer } | Select-Object -First 1
-    $jdkHomePath = $jdkHome.FullName
-
-    Write-Host "Setting JAVA_HOME to $jdkHomePath"
-    $env:JAVA_HOME = $jdkHomePath
-    $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-
-    # Test Java version
-    & "$env:JAVA_HOME\bin\java.exe" -version
-  displayName: 'Install JDK 21 from Adoptium'
-
-
-# Step 3: Cache Maven dependencies
+    choco install openjdk21 -y
+    java -version
+  displayName: 'Install JDK 21'
+# Step 2: Cache Maven dependencies
 - task: Cache@2
   inputs:
     key: 'maven | "$(Agent.OS)" | **/pom.xml'
     path: '$(USERPROFILE)\.m2\repository'
     restoreKeys: |
       maven | "$(Agent.OS)"
-
-# Step 4: Install Google Chrome and ChromeDriver using PowerShell (with fallback for ChromeDriver)
+# Step 3: Install Google Chrome and ChromeDriver using PowerShell (with fallback for ChromeDriver)
 - powershell: |
     # Detect Chrome path
     $chromePath = "${Env:ProgramFiles}\Google\Chrome\Application\chrome.exe"
@@ -126,23 +87,22 @@ steps:
     # Verify chromedriver version
     & "$(Agent.ToolsDirectory)\chromedriver\chromedriver.exe" --version
   displayName: 'Install Chrome and ChromeDriver'
-
+# Step 4: Configure LambdaTest Tunnel (with hardcoded credentials)
+- task: configuration@1
+  inputs:
+    isTunnelActivate: true
+    isAppAutomate: false
+    isSmartUI: false
+    ltUsername: 'shivanks'    # Replace with your LambdaTest username
+    ltAccessKey: 'LT_V6UEGtFRGiIPH4QcUdNKQv4RIetJjVfXKKIEkrP3Sk15opJ' # Replace with your LambdaTest access key
+    # connection: 'Lambdatest-Connection'
+  displayName: 'Configure LambdaTest Tunnel'
 # Step 5: Build Maven project
 - script: mvn clean compile
   displayName: 'Maven Clean & Compile'
-
 # Step 6: Run Selenium tests (headless mode recommended)
 - script: mvn test
   displayName: 'Run Selenium Tests'
-# # Step 6: Run Selenium tests (explicit test class)
-# - script: mvn -Dtest=DemoTest test
-#   displayName: 'Run Selenium Tests'
-# Step 6b: Run the new AzureWithTunnel test class
-- script: mvn -Dtest=AzureWithTunnel test
-  displayName: 'Run AzureWithTunnel Test'
-
-
-
 # Step 7: Package project (optional)
 - script: mvn package
   displayName: 'Maven Package'
