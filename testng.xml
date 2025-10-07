@@ -4,6 +4,7 @@
         <classes>
             <class name="DemoTest"/>
             <class name="DemoAutomation"/>
+            <class name="AzureWithTunnel"/>
         </classes>
     </test>
 </suite>
