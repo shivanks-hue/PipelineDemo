@@ -6,87 +6,56 @@ variables:
   MAVEN_OPTS: "-Xmx1024m"
 steps:
 - checkout: self
-# Step 1: Install JDK 21 using Chocolatey (or skip if already installed)
+
+# Step 1: Ensure Chocolatey is installed
 - powershell: |
-    choco install openjdk21 -y
-    java -version
-  displayName: 'Install JDK 21'
-# Step 2: Cache Maven dependencies
+    # Check if Chocolatey is installed
+    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+        Write-Host "Chocolatey is not installed. Installing Chocolatey..."
+        Set-ExecutionPolicy Bypass -Scope Process -Force; 
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; 
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+    } else {
+        Write-Host "Chocolatey is already installed."
+    }
+  displayName: 'Ensure Chocolatey is Installed'
+
+# Step 2: Download and install JDK 21 manually from Adoptium
+- powershell: |
+    $jdkVersion = "21"
+    $arch = "x64"
+    $os = "windows"
+    $impl = "hotspot"
+    $releaseType = "ga"
+    $downloadUrl = "https://api.adoptium.net/v3/binary/latest/$jdkVersion/$releaseType/$os/$arch/jdk/$impl/normal/eclipse"
+
+    Write-Host "Downloading JDK $jdkVersion from $downloadUrl"
+    Invoke-WebRequest -Uri $downloadUrl -OutFile "jdk.zip"
+
+    $jdkDir = "$(Agent.ToolsDirectory)\jdk-$jdkVersion"
+    Expand-Archive -Path "jdk.zip" -DestinationPath $jdkDir -Force
+    Remove-Item "jdk.zip"
+
+    # Get extracted JDK root (since Adoptium zips have versioned folder inside)
+    $jdkHome = Get-ChildItem $jdkDir | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+    $jdkHomePath = $jdkHome.FullName
+
+    Write-Host "Setting JAVA_HOME to $jdkHomePath"
+    $env:JAVA_HOME = $jdkHomePath
+    $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+
+    # Test Java version
+    & "$env:JAVA_HOME\bin\java.exe" -version
+  displayName: 'Install JDK 21 from Adoptium'
+
+
+# Step 3: Cache Maven dependencies
 - task: Cache@2
   inputs:
     key: 'maven | "$(Agent.OS)" | **/pom.xml'
     path: '$(USERPROFILE)\.m2\repository'
     restoreKeys: |
       maven | "$(Agent.OS)"
-# Step 3: Install Google Chrome and ChromeDriver using PowerShell (with fallback for ChromeDriver)
-- powershell: |
-    # Detect Chrome path
-    $chromePath = "${Env:ProgramFiles}\Google\Chrome\Application\chrome.exe"
-    if (-Not (Test-Path $chromePath)) {
-      $chromePath = "${Env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-    }
-    if (-Not (Test-Path $chromePath)) {
-      Write-Error "Google Chrome executable not found!"
-      exit 1
-    }
-    # Install Chrome if missing (unlikely if above paths exist, but kept for safety)
-    if (-Not (Test-Path $chromePath)) {
-      Write-Host "Installing Google Chrome..."
-      Invoke-WebRequest -Uri https://dl.google.com/chrome/install/latest/chrome_installer.exe -OutFile chrome_installer.exe
-      Start-Process -FilePath chrome_installer.exe -ArgumentList "/silent", "/install" -Wait
-      Remove-Item -Force chrome_installer.exe
-    } else {
-      Write-Host "Google Chrome already installed at $chromePath"
-    }
-    # Try to get Chrome version from multiple registry paths
-    $chromeVersion = $null
-    try {
-        $chromeVersion = (Get-ItemProperty "HKLM:\SOFTWARE\Google\Chrome\BLBeacon").version
-    } catch {}
-    if (-not $chromeVersion) {
-        try {
-            $chromeVersion = (Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Google\Chrome\BLBeacon").version
-        } catch {}
-    }
-    if (-not $chromeVersion) {
-        try {
-            $chromeVersion = (Get-ItemProperty "HKCU:\Software\Google\Chrome\BLBeacon").version
-        } catch {}
-    }
-    # Fallback: call chrome.exe --version if registry not found
-    if (-not $chromeVersion) {
-        Write-Host "Chrome version not found in registry, falling back to executable."
-        $versionOutput = & $chromePath --version
-        Write-Host "Chrome version output: $versionOutput"
-        # Parse version number from output string, e.g., "Google Chrome 117.0.5938.92"
-        $chromeVersion = ($versionOutput -split " ")[2]
-    }
-    if (-not $chromeVersion) {
-      Write-Error "Unable to determine Chrome version."
-      exit 1
-    }
-    Write-Host "Detected Chrome version: $chromeVersion"
-    $chromeMajorVersion = $chromeVersion.Split('.')[0]
-    Write-Host "Chrome major version: $chromeMajorVersion"
-    # Download matching ChromeDriver version with fallback to latest stable
-    $chromedriverVersionUrl = "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$chromeMajorVersion"
-    try {
-        $chromedriverVersion = Invoke-RestMethod -Uri $chromedriverVersionUrl
-    } catch {
-        Write-Warning "No matching ChromeDriver for version $chromeMajorVersion. Using latest stable ChromeDriver version."
-        $chromedriverVersion = Invoke-RestMethod -Uri "https://chromedriver.storage.googleapis.com/LATEST_RELEASE"
-    }
-    Write-Host "Using ChromeDriver version: $chromedriverVersion"
-    $chromedriverZip = "chromedriver_win32.zip"
-    Invoke-WebRequest -Uri "https://chromedriver.storage.googleapis.com/$chromedriverVersion/chromedriver_win32.zip" -OutFile $chromedriverZip
-    # Extract chromedriver.exe
-    Expand-Archive -Path $chromedriverZip -DestinationPath "$(Agent.ToolsDirectory)\chromedriver" -Force
-    Remove-Item -Force $chromedriverZip
-    # Add chromedriver to PATH for this session
-    $env:PATH += ";$(Agent.ToolsDirectory)\chromedriver"
-    # Verify chromedriver version
-    & "$(Agent.ToolsDirectory)\chromedriver\chromedriver.exe" --version
-  displayName: 'Install Chrome and ChromeDriver'
 # Step 4: Configure LambdaTest Tunnel (with hardcoded credentials)
 - task: configuration@1
   inputs:
