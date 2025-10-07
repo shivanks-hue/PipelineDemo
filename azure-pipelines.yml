@@ -137,6 +137,10 @@ steps:
 # # Step 6: Run Selenium tests (explicit test class)
 # - script: mvn -Dtest=DemoTest test
 #   displayName: 'Run Selenium Tests'
+# Step 6b: Run the new AzureWithTunnel test class
+- script: mvn -Dtest=AzureWithTunnel test
+  displayName: 'Run AzureWithTunnel Test'
+
 
 
 # Step 7: Package project (optional)
