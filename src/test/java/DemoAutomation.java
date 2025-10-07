@@ -28,7 +28,7 @@ public class DemoAutomation {
         ltOptions.put("username", username);
         ltOptions.put("accessKey", accessKey);
         ltOptions.put("video", true);
-        ltOptions.put("build", "Java_Selenium_Script");
+        ltOptions.put("build", "TesingWithAzure");
         ltOptions.put("project", "DemoOnAutomation");
         ltOptions.put("selenium_version", "4.0.0");
         ltOptions.put("w3c", true);
